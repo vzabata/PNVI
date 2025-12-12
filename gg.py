@@ -2,114 +2,201 @@ import pygame
 import random
 import sys
 
-WINDOW_WIDTH = 900
-WINDOW_HEIGHT = 600
+WIDTH = 800
+HEIGHT = 800
 FPS = 60
 
-PADDLE_WIDTH = 20
-PADDLE_HEIGHT = 120
-BALL_SIZE = 20
-
 WHITE = (255, 255, 255)
+RED = (255, 0, 0)
 BLACK = (0, 0, 0)
 
-PADDLE_SPEED = 10
-BALL_SPEED_X = 6
-BALL_SPEED_Y = 4
-BALL_SPEED_INCREMENT = 0.6
-
 pygame.init()
-window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-pygame.display.set_caption("Pong")
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Space Scavenger")
 clock = pygame.time.Clock()
-font = pygame.font.Font('freesansbold.ttf', 32)
 
-def reset_ball():
-    return WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2, -BALL_SPEED_X, BALL_SPEED_Y
+spaceship_img = pygame.image.load("spaceship.png")
+asteroid_img = pygame.image.load("asteroid.png")
+crystal_img = pygame.image.load("energy_crystal.png")
+
+background_music = "background_music.wav"
+clash_sound = pygame.mixer.Sound("clash_sound.wav")
+
+pygame.mixer.music.load(background_music)
+pygame.mixer.music.play(-1)
+
+spaceship_img = pygame.transform.scale(spaceship_img, (70, 70))
+asteroid_img = pygame.transform.scale(asteroid_img, (80, 80))
+crystal_img = pygame.transform.scale(crystal_img, (50, 50))
+
+class Player:
+    def __init__(self):
+        self.image = spaceship_img
+        self.rect = self.image.get_rect(center=(WIDTH // 2, HEIGHT - 120))
+        self.speed = 8
+
+    def update(self):
+        keys = pygame.key.get_pressed()
+        if (keys[pygame.K_LEFT] or keys[pygame.K_a]) and self.rect.left > 0:
+            self.rect.x -= self.speed
+        if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) and self.rect.right < WIDTH:
+            self.rect.x += self.speed
+        if (keys[pygame.K_UP] or keys[pygame.K_w]) and self.rect.top > 0:
+            self.rect.y -= self.speed
+        if (keys[pygame.K_DOWN] or keys[pygame.K_s]) and self.rect.bottom < HEIGHT:
+            self.rect.y += self.speed
+
+        self.speed += 0.0008
+
+    def draw(self):
+        screen.blit(self.image, self.rect)
+        #pygame.draw.rect(screen, WHITE, self.rect, 1)
 
 
-def draw_text(text, size, x, y):
-    f = pygame.font.Font('freesansbold.ttf', size)
-    surface = f.render(text, True, WHITE)
-    rect = surface.get_rect(center=(x, y))
-    window.blit(surface, rect)
+class Star:
+    def __init__(self):
+        self.x = random.randint(0, WIDTH)
+        self.y = random.randint(0, HEIGHT)
+        self.size = random.randint(1, 3)   # small star pixels
+        self.speed = 4
+
+    def update(self):
+        self.y += self.speed
+        if self.y > HEIGHT:
+            self.y = 0
+            self.x = random.randint(0, WIDTH)
+
+    def draw(self):
+        pygame.draw.rect(screen, WHITE, (self.x, self.y, self.size, self.size))
+
+
+class Asteroid:
+    def __init__(self):
+        self.image = asteroid_img
+        self.rect = self.image.get_rect(center=(random.randint(40, WIDTH - 40), -100))
+        self.hitbox = self.rect.inflate(-30, -30)
+
+        self.speed = 4
+
+    def update(self):
+        self.rect.y += self.speed
+        self.hitbox.bottomleft = self.rect.bottomleft
+
+    def draw(self):
+        screen.blit(self.image, self.rect)
+        pygame.draw.rect(screen, WHITE, self.rect, 1)
+        pygame.draw.rect(screen, (255, 0, 0), self.hitbox, 1)
+
+class Crystal:
+    def __init__(self):
+        self.image = crystal_img
+        self.rect = self.image.get_rect(center=(random.randint(50, WIDTH - 50), -40))
+        self.speed = 4
+
+    def update(self):
+        self.rect.y += self.speed
+
+    def draw(self):
+        screen.blit(self.image, self.rect)
+#        pygame.draw.rect(screen, WHITE, self.rect, 1)
 
 def main():
-    paddle_y = WINDOW_HEIGHT // 2 - PADDLE_HEIGHT // 2
-
-    ball_x, ball_y, ball_dx, ball_dy = reset_ball()
+    player = Player()
+    asteroids = []
+    crystals = []
+    stars = [Star() for _ in range(260)]
 
     score = 0
-    paused = False
-    game_over = False
+    asteroid_timer = 0
+    crystal_timer = 0
 
     running = True
     while running:
         clock.tick(FPS)
 
+        # Events
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    sys.exit()
+        asteroid_timer += 1
+        crystal_timer += 1
 
-                if event.key == pygame.K_p and not game_over:
-                    paused = not paused
+        if asteroid_timer > 50:
+            asteroids.append(Asteroid())
+            asteroid_timer = 0
 
-                if event.key == pygame.K_r and game_over:
-                    return main()
+        if crystal_timer > 90:
+            crystals.append(Crystal())
+            crystal_timer = 0
 
-        keys = pygame.key.get_pressed()
+        player.update()
 
-        if not paused and not game_over:
-            if keys[pygame.K_w] or keys[pygame.K_UP] and paddle_y > 0:
-                paddle_y -= PADDLE_SPEED
-            if keys[pygame.K_s] or keys[pygame.K_DOWN] and paddle_y < WINDOW_HEIGHT - PADDLE_HEIGHT:
-                paddle_y += PADDLE_SPEED
+        for a in asteroids:
+            a.update()
+            if a.hitbox.colliderect(player.rect):
+                clash_sound.play()
+                return score
 
-            ball_x += ball_dx
-            ball_y += ball_dy
-
-            if ball_y <= 0 or ball_y >= WINDOW_HEIGHT - BALL_SIZE:
-                ball_dy = -ball_dy
-
-            if ball_x >= WINDOW_WIDTH - BALL_SIZE:
-                ball_dx = -ball_dx
-
-            if (ball_x <= PADDLE_WIDTH and
-                paddle_y < ball_y < paddle_y + PADDLE_HEIGHT):
-                ball_dx = -ball_dx
-
-                ball_dx *= 1.1
-                ball_dy *= 1.1
-
-                ball_dy += random.randint(-2, 2)
-
+        for c in crystals:
+            c.update()
+            if c.rect.colliderect(player.rect):
                 score += 1
-
-            if ball_x < -BALL_SIZE:
-                game_over = True
+                crystals.remove(c)
 
 
-        window.fill(BLACK)
-        pygame.draw.rect(window, WHITE, (0, paddle_y, PADDLE_WIDTH, PADDLE_HEIGHT))
-        pygame.draw.rect(window, WHITE, (ball_x, ball_y, BALL_SIZE, BALL_SIZE))
-        draw_text(f"Score: {score}", 30, WINDOW_WIDTH - 100, 30)
 
-        if paused:
-            draw_text("PAUSED (Press P to Continue)", 40, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2)
+        asteroids = [a for a in asteroids if a.rect.y < HEIGHT + 100]
+        crystals = [c for c in crystals if c.rect.y < HEIGHT + 100]
 
-        if game_over:
-            draw_text("GAME OVER", 60, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 40)
-            draw_text(f"Score: {score}", 40, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 20)
-            draw_text("Press R to Restart", 30, WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 70)
+        # Draw
+        screen.fill(BLACK)
+
+        # Stars
+        for s in stars:
+            s.update()
+            s.draw()
+
+        player.draw()
+
+        for a in asteroids:
+            a.draw()
+        for c in crystals:
+            c.draw()
+
+        font = pygame.font.SysFont("arial", 32)
+        score_text = font.render(f"Score: {score}", True, WHITE)
+        screen.blit(score_text, (10, 10))
 
         pygame.display.update()
 
+def game_over_screen(score):
+    font = pygame.font.SysFont("arial", 48)
+    small_font = pygame.font.SysFont("arial", 32)
 
-if __name__ == '__main__':
-    main()
+    while True:
+        #screen.fill(BLACK)
+
+        text = font.render("GAME OVER", True, RED)
+        screen.blit(text, (WIDTH//2 - text.get_width()//2, 250))
+
+        score_text = small_font.render(f"Your Score: {score}", True, WHITE)
+        screen.blit(score_text, (WIDTH//2 - score_text.get_width()//2, 350))
+
+        restart_text = small_font.render("Press 'R' to restart", True, WHITE)
+        screen.blit(restart_text, (WIDTH//2 - restart_text.get_width()//2, 430))
+
+        pygame.display.update()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                return
+
+
+while True:
+    score = main()
+    game_over_screen(score)
